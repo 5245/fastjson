@@ -17,6 +17,8 @@ package com.alibaba.fastjson.serializer;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Type;
 import java.text.SimpleDateFormat;
 import java.util.Collection;
 import java.util.Date;
@@ -24,7 +26,9 @@ import java.util.Map;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.annotation.JSONField;
+import com.alibaba.fastjson.annotation.JSONType;
 import com.alibaba.fastjson.util.FieldInfo;
+import com.alibaba.fastjson.util.TypeUtils;
 
 /**
  * @author wenshao[szujobs@hotmail.com]
@@ -47,11 +51,26 @@ public class FieldSerializer implements Comparable<FieldSerializer> {
 
     protected boolean             serializeUsing          = false;
 
+    protected boolean             persistenceOneToMany    = false;
+
     private RuntimeSerializerInfo runtimeInfo;
     
-    public FieldSerializer(Class<?> beanType, FieldInfo fieldInfo){
+    public FieldSerializer(Class<?> beanType, FieldInfo fieldInfo) {
         this.fieldInfo = fieldInfo;
         this.fieldContext = new BeanContext(beanType, fieldInfo);
+
+        if (beanType != null && fieldInfo.isEnum) {
+            JSONType jsonType = beanType.getAnnotation(JSONType.class);
+            if (jsonType != null) {
+                for (SerializerFeature feature : jsonType.serialzeFeatures()) {
+                    if (feature == SerializerFeature.WriteEnumUsingToString) {
+                        writeEnumUsingToString = true;
+                    }else if(feature == SerializerFeature.WriteEnumUsingName){
+                        writeEnumUsingName = true;
+                    }
+                }
+            }
+        }
         
         fieldInfo.setAccessible();
 
@@ -85,6 +104,8 @@ public class FieldSerializer implements Comparable<FieldSerializer> {
         }
         
         this.writeNull = writeNull;
+
+        persistenceOneToMany = TypeUtils.isAnnotationPresentOneToMany(fieldInfo.method);
     }
 
     public void writePrefix(JSONSerializer serializer) throws IOException {
@@ -108,7 +129,11 @@ public class FieldSerializer implements Comparable<FieldSerializer> {
     }
 
     public Object getPropertyValueDirect(Object object) throws InvocationTargetException, IllegalAccessException {
-        return  fieldInfo.get(object);
+        Object fieldValue =  fieldInfo.get(object);
+        if (persistenceOneToMany && TypeUtils.isHibernateInitialized(fieldValue)) {
+            return null;
+        }
+        return fieldValue;
     }
 
     public Object getPropertyValue(Object object) throws InvocationTargetException, IllegalAccessException {

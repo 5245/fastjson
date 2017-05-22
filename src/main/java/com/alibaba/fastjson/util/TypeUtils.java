@@ -50,7 +50,6 @@ import com.alibaba.fastjson.serializer.CalendarCodec;
 import com.alibaba.fastjson.serializer.DateCodec;
 import com.alibaba.fastjson.serializer.SerializeBeanInfo;
 import com.alibaba.fastjson.serializer.SerializerFeature;
-import org.springframework.util.LinkedMultiValueMap;
 
 /**
  * @author wenshao[szujobs@hotmail.com]
@@ -75,6 +74,12 @@ public class TypeUtils {
 
     private static boolean transientClassInited         = false;
     private static Class<? extends Annotation> transientClass;
+
+    private static Class<? extends Annotation> class_OneToMany = null;
+    private static boolean class_OneToMany_error = false;
+
+    private static Method method_HibernateIsInitialized = null;
+    private static boolean method_HibernateIsInitialized_error = false;
 
     static {
         try {
@@ -1003,6 +1008,15 @@ public class TypeUtils {
                     object = new JSONObject(map);
                 }
 
+                if (config == null) {
+                    config = ParserConfig.getGlobalInstance();
+                }
+                ObjectDeserializer deserializer = config.getDeserializers().get(clazz);
+                if (deserializer != null) {
+                    String json = JSON.toJSONString(object);
+                    return (T) JSON.parseObject(json, clazz);
+                }
+
                 return (T) Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(),
                                                   new Class<?>[] { clazz }, object);
             }
@@ -1145,8 +1159,6 @@ public class TypeUtils {
 
                 loadClass("org.springframework.remoting.support.RemoteInvocation"),
                 loadClass("org.springframework.remoting.support.RemoteInvocationResult"),
-                loadClass("org.springframework.util.LinkedCaseInsensitiveMap"),
-                loadClass("org.springframework.util.LinkedMultiValueMap"),
         };
 
         for (Class clazz : classes) {
@@ -2076,5 +2088,53 @@ public class TypeUtils {
         }
 
         return false;
+    }
+
+    public static boolean isAnnotationPresentOneToMany(Method method) {
+        if (method == null) {
+            return false;
+        }
+
+        if (class_OneToMany == null && !class_OneToMany_error) {
+            try {
+                class_OneToMany = (Class<? extends Annotation>) Class.forName("javax.persistence.OneToMany");
+            } catch (Throwable e) {
+                // skip
+                class_OneToMany_error = true;
+            }
+        }
+
+        if (class_OneToMany == null) {
+            return false;
+        }
+
+        return method.isAnnotationPresent(class_OneToMany);
+    }
+
+    public static boolean isHibernateInitialized(Object object) {
+        if (object == null) {
+            return false;
+        }
+
+        if (method_HibernateIsInitialized == null && !method_HibernateIsInitialized_error) {
+            try {
+                Class<?> class_Hibernate = (Class<? extends Annotation>) Class.forName("org.hibernate.Hibernate");
+                method_HibernateIsInitialized = class_Hibernate.getMethod("isInitialized", Object.class);
+            } catch (Throwable e) {
+                // skip
+                method_HibernateIsInitialized_error = true;
+            }
+        }
+
+        if (method_HibernateIsInitialized != null) {
+            try {
+                Boolean initialized = (Boolean) method_HibernateIsInitialized.invoke(null, object);
+                return initialized.booleanValue();
+            } catch (Throwable e) {
+                // skip
+            }
+        }
+
+        return true;
     }
 }

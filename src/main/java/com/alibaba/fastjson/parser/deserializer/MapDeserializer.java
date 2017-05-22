@@ -8,10 +8,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONException;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.parser.*;
 import com.alibaba.fastjson.parser.DefaultJSONParser.ResolveTask;
+import com.alibaba.fastjson.serializer.CollectionCodec;
 import com.alibaba.fastjson.util.TypeUtils;
 
 public class MapDeserializer implements ObjectDeserializer {
@@ -64,7 +66,25 @@ public class MapDeserializer implements ObjectDeserializer {
         JSONLexer lexer = parser.lexer;
 
         if (lexer.token() != JSONToken.LBRACE) {
-            throw new JSONException("syntax error, expect {, actual " + lexer.token());
+            String msg = "syntax error, expect {, actual " + lexer.tokenName();
+            if (fieldName instanceof String) {
+                msg += ", fieldName ";
+                msg += fieldName;
+            }
+            msg += ", ";
+            msg += lexer.info();
+
+            JSONArray array = new JSONArray();
+            parser.parseArray(array, fieldName);
+
+            if (array.size() == 1) {
+                Object first = array.get(0);
+                if (first instanceof JSONObject) {
+                    return (JSONObject) first;
+                }
+            }
+
+            throw new JSONException(msg);
         }
 
         ParseContext context = parser.getContext();
